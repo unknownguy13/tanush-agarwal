@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stack Ball 2026: FF Pro Edition</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'Arial Black', sans-serif; }
+        #ui { position: absolute; top: 20px; width: 100%; text-align: center; color: white; pointer-events: none; }
+        #score { font-size: 60px; text-shadow: 0 0 20px rgba(0,0,0,0.5); margin: 0; }
+        #fire-msg { color: #ff4500; font-size: 20px; display: none; text-shadow: 0 0 10px #ff0000; }
+        
+        .controls { position: absolute; bottom: 20px; width: 100%; text-align: center; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+        button { padding: 12px 20px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; background: rgba(0,0,0,0.6); color: white; transition: 0.3s; pointer-events: auto; }
+        button:hover { background: white; color: black; transform: scale(1.1); }
+        
+        .share-btn { background: #25D366 !important; border: 2px solid white !important; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div id="score">0</div>
+        <div id="fire-msg">🔥 FIREBALL MODE 🔥</div>
+    </div>
+
+    <div class="controls">
+        <button onclick="setTheme('bermuda')">Bermuda (Green)</button>
+        <button onclick="setTheme('purgatory')">Purgatory (Sunset)</button>
+        <button onclick="setTheme('kalahari')">Kalahari (Desert)</button>
+        <button class="share-btn" onclick="shareApp()">🚀 SHARE APP</button>
+    </div>
+
+    <!-- 2026 Optimized Three.js Library -->
+    <script src="cdnjs.cloudflare.com"></script>
+
+    <script>
+        let scene, camera, renderer, ball, terrain, platforms = [], particles = [];
+        let isSmashing = false, score = 0, clock = new THREE.Clock();
+
+        function init() {
+            // Scene & Depth Fog
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0x87CEEB, 15, 60);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 10, 15);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.toneMapping = THREE.ReinhardToneMapping;
+            document.body.appendChild(renderer.domElement);
+
+            // Lighting (Realistic Sun)
+            const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+            sun.position.set(10, 20, 15);
+            scene.add(sun);
+            scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+            // Central Pole
+            const pole = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.6, 0.6, 120, 32),
+                new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.9, roughness: 0.1 })
+            );
+            scene.add(pole);
+
+            // Vibrant Ball
+            ball = new THREE.Mesh(
+                new THREE.SphereGeometry(0.45, 32, 32),
+                new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xff4400, emissiveIntensity: 1 })
+            );
+            ball.position.set(2, 5, 0);
+            scene.add(ball);
+
+            // FF Style Terrain Background
+            const terrainGeo = new THREE.PlaneGeometry(300, 300, 30, 30);
+            const pos = terrainGeo.attributes.position;
+            for(let i=0; i<pos.count; i++) pos.setZ(i, Math.random() * 3); // Bumpy hills
+            terrain = new THREE.Mesh(terrainGeo, new THREE.MeshStandardMaterial({ color: 0x4CAF50 }));
+            terrain.rotation.x = -Math.PI / 2;
+            terrain.position.y = -25;
+            scene.add(terrain);
+
+            // Generate Initial Levels
+            for(let i = 0; i < 50; i++) createPlatform(-i * 3);
+
+            setupInput();
+            animate();
+        }
+
+        function createPlatform(y) {
+            const group = new THREE.Group();
+            const segments = 10;
+            for(let i = 0; i < segments; i++) {
+                const isDanger = (i < 2);
+                const mat = new THREE.MeshStandardMaterial({ 
+                    color: isDanger ? 0x000000 : new THREE.Color().setHSL(0.5 + (y*0.01), 0.8, 0.5),
+                    metalness: 0.7, roughness: 0.2 
+                });
+                const part = new THREE.Mesh(new THREE.TorusGeometry(2, 0.4, 12, 40, (Math.PI*2/segments)*0.94), mat);
+                part.rotation.x = Math.PI/2;
+                part.rotation.z = (Math.PI*2/segments) * i;
+                part.userData = { isDanger };
+                group.add(part);
+            }
+            group.position.y = y;
+            scene.add(group);
+            platforms.push(group);
+        }
+
+        function setTheme(map) {
+            const themes = {
+                'bermuda': { sky: '#87CEEB', ground: '#4CAF50' },
+                'purgatory': { sky: '#ff7f50', ground: '#8B4513' },
+                'kalahari': { sky: '#ffd700', ground: '#D2B48C' }
+            };
+            const t = themes[map];
+            renderer.setClearColor(t.sky);
+            scene.fog.color.set(t.sky);
+            terrain.material.color.set(t.ground);
+        }
+
+        function shareApp() {
+            if (navigator.share) {
+                navigator.share({
+                    title: 'Stack Ball FF Edition',
+                    text: 'Bro! Check out this realistic Stack Ball game I built. Fast & Fireball mode is insane!',
+                    url: window.location.href
+                });
+            } else { alert("Link copy karke share karein: " + window.location.href); }
+        }
+
+        function explode(pos, color) {
+            for(let i=0; i<12; i++) {
+                const p = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 0.25), new THREE.MeshBasicMaterial({ color }));
+                p.position.copy(pos);
+                p.userData = { v: new THREE.Vector3((Math.random()-0.5)*0.6, Math.random()*0.5, (Math.random()-0.5)*0.6), l: 1 };
+                scene.add(p);
+                particles.push(p);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            platforms.forEach(p => p.rotation.y += 0.04);
+
+            if(isSmashing) {
+                ball.position.y -= 0.45;
+                ball.material.emissiveIntensity = 10;
+                document.getElementById('fire-msg').style.display = "block";
+            } else {
+                ball.position.y = platforms[0] ? platforms[0].position.y + 1 + Math.abs(Math.sin(Date.now()*0.01)*2.5) : 0;
+                ball.material.emissiveIntensity = 1;
+                document.getElementById('fire-msg').style.display = "none";
+            }
+
+            // Collision & Smashing Logic
+            if(platforms[0] && ball.position.y <= platforms[0].position.y + 0.7) {
+                if(isSmashing) {
+                    const hit = platforms.shift();
+                    explode(hit.position, 0x00ffcc);
+                    scene.remove(hit);
+                    score += 10;
+                    document.getElementById('score').innerText = score;
+                }
+            }
+
+            // Smooth FF Style Camera
+            camera.position.y = THREE.MathUtils.lerp(camera.position.y, ball.position.y + 8, 0.1);
+            camera.lookAt(0, ball.position.y - 2, 0);
+
+            // Update Particles
+            particles.forEach((p, i) => {
+                p.position.add(p.userData.v);
+                p.userData.l -= 0.03;
+                p.material.opacity = p.userData.l;
+                if(p.userData.l <= 0) { scene.remove(p); particles.splice(i,1); }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        function setupInput() {
+            const start = () => isSmashing = true;
+            const end = () => isSmashing = false;
+            window.addEventListener('mousedown', start); window.addEventListener('mouseup', end);
+            window.addEventListener('touchstart', start); window.addEventListener('touchend', end);
+        }
+
+        init();
+    </script>
+</body>
+</html>
